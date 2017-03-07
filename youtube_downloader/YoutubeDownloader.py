@@ -7,19 +7,19 @@ from youtube_downloader.downloader.file_downloader import FileDownloader
 from youtube_downloader.downloader.spider import Spider
 from youtube_downloader.utils import parser_utils
 
-
 __author__ = 'rabbi'
 
 
 class YoutubeDownloader(Spider):
-    def __init__(self, url):
+    def __init__(self, url, directory):
         Spider.__init__(self)
         self.__url = url
+        self.__dir = directory
 
     def start_download(self):
         try:
             print("Youtube Video URL: " + self.__url)
-            media_list = self.__extract_meta()
+            media_list, cc_list = self.__extract_meta()
             if not media_list:
                 return
             print('Please select itag from the following list:')
@@ -40,19 +40,34 @@ class YoutubeDownloader(Spider):
             output_file_name = self.__extract_filename(video_title)
             print(output_file_name + '.mp4')
 
+            # check directory
+            if not os.path.exists(self.__dir):
+                os.makedirs(self.__dir)
+
+            # todo download cc
+            if cc_list:
+                print('All cc list:')
+                for cc in cc_list:
+                    print(cc.lan, cc.url)
+                    cc_output_file = self.__dir + output_file_name + '_' + cc.lan + '_cc.srt'
+                    xml_data = self.fetch_data(cc.url)
+                    if not xml_data:
+                        continue
+                    parser_utils.convert_xml_to_srt_file(xml_data, cc_output_file)
+
             # todo download
-            video_output_file = './' + output_file_name + '_video.mp4'
+            video_output_file = self.__dir + output_file_name + '_video.mp4'
             video_downloader = FileDownloader(selected_video.url, video_output_file)
             video_downloader.download_file()
 
             # todo download audio
-            audio_output_file = './' + output_file_name + '_audio.mp4a'
+            audio_output_file = self.__dir + output_file_name + '_audio.mp4a'
             selected_audio = next(y for y in iter(media_list) if y.media_type == 'audio/mp4')
             audio_downloader = FileDownloader(selected_audio.url, audio_output_file)
             audio_downloader.download_file()
 
             # todo merge
-            merged_av_file = './' + output_file_name + '.mkv'
+            merged_av_file = self.__dir + output_file_name + '.mkv'
             if self.__merge_av(merged_av_file, video_output_file, audio_output_file):
                 print('download completed....')
                 # os.remove(video_output_file)
@@ -62,6 +77,7 @@ class YoutubeDownloader(Spider):
 
     def __extract_meta(self):
         media_list = []
+        cc_list = []
         try:
             data = self.fetch_data(self.__url)
             if not data:
@@ -69,6 +85,15 @@ class YoutubeDownloader(Spider):
             adaptive_fmt_match = re.search(r'(?i)"adaptive_fmts":\s*?"([^"]*?)"', data, re.MULTILINE)
             if not adaptive_fmt_match:
                 return
+            cc_match = re.search(r'(?i)"caption_tracks":\s*?"([^"]*?)"', data, re.MULTILINE)
+            if cc_match:
+                cc_info_list = cc_match.group(1)
+                cc_info_list = parser_utils.unquote_url(cc_info_list)
+                cc_info_list = cc_info_list.split(',')
+                for cc_info in cc_info_list:
+                    cc = self.__parse_cc(cc_info)
+                    if not any(c.lan == cc.lan for c in cc_list):
+                        cc_list.append(cc)
             adaptive_fmt_all = adaptive_fmt_match.group(1)
             adaptive_fmt_all = parser_utils.unquote_url(adaptive_fmt_all)
             adaptive_fmts = adaptive_fmt_all.split(',')
@@ -78,7 +103,7 @@ class YoutubeDownloader(Spider):
                 media_list.append(meta_data)
         except Exception as x:
             print(x)
-        return media_list
+        return media_list, cc_list
 
     def __extract_title(self, url):
         try:
@@ -93,6 +118,18 @@ class YoutubeDownloader(Spider):
             return match.group(1) if match else ''
         except Exception as x:
             print(x)
+
+    @staticmethod
+    def __parse_cc(cc_info):
+        cc_info = re.split(r'\\u0026', cc_info)
+        if cc_info and len(cc_info) > 0:
+            cc = Subtitle()
+            for c in cc_info:
+                if 'u=' in c:
+                    cc.url = c.replace('u=', '').strip()
+                elif 'lc=' in c:
+                    cc.lan = c.replace('lc=', '').strip()
+            return cc
 
     @staticmethod
     def __merge_av(output_file, *args):
@@ -190,6 +227,28 @@ class Media(object):
         self.__size = value
 
 
+class Subtitle(object):
+    def __init__(self, url=None, lan=None):
+        self.__url = url
+        self.__lan = lan
+
+    @property
+    def url(self):
+        return self.__url
+
+    @url.setter
+    def url(self, value):
+        self.__url = value
+
+    @property
+    def lan(self):
+        return self.__lan
+
+    @lan.setter
+    def lan(self, value):
+        self.__lan = value
+
+
 class Size(object):
     def __init__(self, size):
         width_height = size.split('x') if size else None
@@ -209,4 +268,3 @@ class Size(object):
 
     def __int__(self):
         return self.__width * self.__height
-
