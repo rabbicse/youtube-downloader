@@ -2,9 +2,10 @@
 import os
 import time
 from http.cookiejar import LWPCookieJar
-from urllib import request
+from urllib import request, error
 
 from youtube_downloader.utils import regex_utils
+from youtube_downloader.utils.printer import Printer
 from ..utils.tail_call import tail_call_optimized
 
 __author__ = 'rabbi'
@@ -51,7 +52,7 @@ class FileDownloader(object):
             dl_file = open(self.__file_name, 'ab')
 
             # res = opener.open(url, timeout=60)
-            chunk_size = 1024 * 1024
+            chunk_size = 256 * 1024
             while True:
                 start = time.time()
                 data = resp.read(chunk_size)
@@ -65,15 +66,23 @@ class FileDownloader(object):
 
                 downloaded = round(float(current_size * 100) / total_size, 2)
                 download_speed = ((len(data) / 1024.0) / total)
-                print('============> ' + str(downloaded) + '% of ' + str(
-                    total_size_mb) + ' Mega Bytes. ' + 'Download Speed: %.2f KBPS' % download_speed)
+                # print('============> ' + str(downloaded) + '% of ' + str(
+                #     total_size_mb) + ' Mega Bytes. ' + 'Download Speed: %.2f KBPS' % download_speed)
+                log = '============> ' + str(downloaded) + '% of ' + str(
+                    total_size_mb) + ' Mega Bytes. ' + 'Download Speed: %.2f KBPS' % download_speed
+                Printer(log)
             if current_size >= total_size:
                 return True
+        except error.HTTPError as e:
+            print(e.code)
+        except error.ContentTooShortError as e:
+            print(e.reason)
+        except error.URLError as e:
+            print(e.reason)
         except Exception as x:
-            error = 'Download error: '
             print(x)
             if retry < 20:
-                time.sleep(30)
+                time.sleep(5)
                 return self.download_file(retry + 1)
         finally:
             if dl_file:

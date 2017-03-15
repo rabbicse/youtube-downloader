@@ -6,24 +6,37 @@ from ..utils.tail_call import tail_call_optimized
 
 __author__ = 'rabbi'
 
-USER_AGENT = ('User-Agent', 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:43.0) Gecko/20100101 Firefox/43.0')
+USER_AGENT = ('User-Agent', 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:52.0) Gecko/20100101 Firefox/52.0')
 
 
 class Spider(object):
+    __headers = [USER_AGENT,
+                 ('Connection', 'keep-alive'),
+                 # ('Accept-Encoding', 'gzip, deflate'),
+                 ('Accept', 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'),
+                 ('Accept-Language', 'en-us,en;q=0.5')]
+
     def __init__(self):
         self.__opener = None
 
-    @tail_call_optimized
-    def fetch_data(self, url, parameters=None, timeout=socket._GLOBAL_DEFAULT_TIMEOUT, retry=0, max_retry=3):
+    # @tail_call_optimized
+    def fetch_data(self, url, parameters=None, headers=None, timeout=socket._GLOBAL_DEFAULT_TIMEOUT, retry=0,
+                   max_retry=3):
         try:
+            if not headers:
+                headers = self.__headers
+
             if self.__opener is None:
-                self.__opener = self.__create_opener([USER_AGENT, ('Accept-Language', 'en-us,en;q=0.5')])
+                self.__opener = self.__create_opener(headers=headers, handler=self.__create_cookie_jar_handler())
             if not parameters:
                 response = self.__opener.open(url, timeout=timeout)
+                print(response.info())
             else:
-                response = self.__opener.open(url, data=parse.urlencode(parameters), timeout=timeout)
+                print('ok..1' + url)
+                response = self.__opener.open(url, data=parse.urlencode(parameters).encode('utf-8'), timeout=timeout)
 
             if response:
+                print(response.info())
                 return response.read().decode('utf-8')
         except error.HTTPError as e:
             print(e.code)
